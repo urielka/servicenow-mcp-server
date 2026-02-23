@@ -19,6 +19,9 @@ import { registerSchemaTools } from "./tools/schema.ts";
 import { registerSearchTools } from "./tools/search.ts";
 import { registerBatchTools } from "./tools/batch.ts";
 import { registerInstanceTools } from "./tools/instances.ts";
+import { registerBackgroundScriptTools } from "./tools/background-scripts.ts";
+import { registerPlatformScriptTools } from "./tools/platform-scripts.ts";
+import { registerScriptedRestTools } from "./tools/scripted-rest.ts";
 
 // Resources
 import { registerResources } from "./resources/index.ts";
@@ -44,6 +47,9 @@ const TOOL_MODULES: { key: string; register: (server: McpServer, registry: Insta
   { key: "schema", register: registerSchemaTools },
   { key: "search", register: registerSearchTools },
   { key: "batch", register: registerBatchTools },
+  { key: "background_scripts", register: registerBackgroundScriptTools },
+  { key: "platform_scripts", register: registerPlatformScriptTools },
+  { key: "scripted_rest", register: registerScriptedRestTools },
 ];
 
 /**

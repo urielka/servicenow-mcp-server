@@ -10,6 +10,7 @@ export const TOOL_PACKAGES: Record<string, string[]> = {
     "tables", "incidents", "users", "changes", "catalog",
     "knowledge", "workflows", "scripts", "changesets", "agile",
     "cmdb", "schema", "search", "batch",
+    "background_scripts", "platform_scripts", "scripted_rest",
   ],
 
   /** Service desk agents — incidents, users, knowledge */
@@ -32,9 +33,10 @@ export const TOOL_PACKAGES: Record<string, string[]> = {
     "tables", "knowledge", "search",
   ],
 
-  /** Platform developers — scripts, workflows, update sets */
+  /** Platform developers — scripts, workflows, update sets, background scripts, all script types, REST APIs */
   platform_developer: [
-    "tables", "scripts", "workflows", "changesets", "schema", "search",
+    "tables", "scripts", "platform_scripts", "workflows", "changesets",
+    "schema", "search", "background_scripts", "scripted_rest",
   ],
 
   /** System administrators — users, groups, schema */
@@ -45,5 +47,11 @@ export const TOOL_PACKAGES: Record<string, string[]> = {
   /** Agile teams — stories, epics, tasks, projects */
   agile: [
     "tables", "agile", "users", "search",
+  ],
+
+  /** Integration developers — REST APIs, scripts, schema, batch */
+  integration_developer: [
+    "tables", "scripts", "platform_scripts", "scripted_rest",
+    "schema", "search", "batch", "background_scripts",
   ],
 };

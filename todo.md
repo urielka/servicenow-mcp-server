@@ -357,14 +357,17 @@ servicenow-mcp-server/
 │   │   ├── users.ts                     # Users, groups, members
 │   │   ├── catalog.ts                   # Service catalog items/categories/variables
 │   │   ├── knowledge.ts                 # Knowledge bases, categories, articles
-│   │   ├── workflows.ts                 # Workflows, activities
+│   │   ├── workflows.ts                 # Workflows + orchestration (version/activities/transitions/publish)
 │   │   ├── scripts.ts                   # Script includes
 │   │   ├── changesets.ts                # Update sets / changesets
 │   │   ├── agile.ts                     # Stories, epics, scrum tasks, projects
 │   │   ├── cmdb.ts                      # CMDB CIs + relationships
 │   │   ├── schema.ts                    # Schema discovery / table introspection
 │   │   ├── search.ts                    # Natural language search
-│   │   └── batch.ts                     # Batch create/update
+│   │   ├── batch.ts                     # Batch create/update
+│   │   ├── background-scripts.ts        # Background script execution via sys_trigger
+│   │   ├── platform-scripts.ts          # Business rules, client scripts, UI policies/actions/scripts
+│   │   └── scripted-rest.ts             # Scripted REST API definitions + operations
 │   │
 │   ├── resources/
 │   │   └── index.ts                     # servicenow:// URI resources (default instance)
@@ -405,7 +408,7 @@ servicenow-mcp-server/
 | Change Management | 10 | change_request, change_task, sysapproval_approver |
 | Service Catalog | 12 | sc_catalog, sc_cat_item, sc_category, item_option_new |
 | Knowledge Base | 8 | kb_knowledge_base, kb_category, kb_knowledge |
-| Workflows | 5 | wf_workflow, wf_activity |
+| Workflows | 9 | wf_workflow, wf_workflow_version, wf_activity, wf_transition, wf_condition |
 | Script Includes | 5 | sys_script_include |
 | Update Sets | 7 | sys_update_set, sys_update_xml |
 | Agile | 12 | rm_story, rm_epic, rm_scrum_task, pm_project |
@@ -413,7 +416,10 @@ servicenow-mcp-server/
 | Schema Discovery | 3 | sys_dictionary, sys_db_object |
 | NL Search | 1 | any |
 | Batch Operations | 2 | any |
-| **Total** | **93** | |
+| Background Scripts | 2 | sys_trigger |
+| Platform Scripts | 25 | sys_script, sys_script_client, sys_ui_policy, sys_ui_action, sys_ui_script |
+| Scripted REST APIs | 7 | sys_ws_definition, sys_ws_operation |
+| **Total** | **130** | |
 
 ## MCP Resources: 7
 
@@ -476,3 +482,186 @@ servicenow-mcp-server/
 ```
 
 Zero other deps. Bun provides native fetch, native test runner, native TypeScript.
+
+---
+
+## Gap Analysis & Future Phases
+
+> Compared against: Happy-Technologies-LLC/mcp-servicenow-nodejs v2.1.5
+
+### Where We're Ahead
+- **OAuth 2.0** support (they only have basic auth)
+- **Stateless multi-instance** (per-call `instance` param vs their mutable state switching)
+- **Dedicated domain tools** (93 tools vs their 44 generic + auto-gen wrappers)
+- **Tool packages** (8 role-based subsets; they have none)
+- **Streamable HTTP** transport (modern MCP protocol; they only have legacy SSE)
+- **Change Management** (10 dedicated tools; they use generic)
+- **Service Catalog** (12 dedicated tools; they use generic)
+- **Users & Groups** (9 dedicated tools; they use generic)
+- **Knowledge Base** (8 dedicated tools; they use generic)
+- **Agile/PPM** (12 dedicated tools; they have none)
+- **CMDB** (5 dedicated tools; they use generic)
+
+### Where They're Ahead
+- **Background script execution** via `sys_trigger` — we have nothing
+- **Platform script types** — they have `sys_script`, `sys_script_client`, etc. via generic; we only have `sys_script_include`
+- **Workflow orchestration** — they build workflow+version+activities+transitions+publish in one call; we have basic CRUD
+- **Flow Designer** — they read `sys_hub_flow` tables; we have nothing
+- **Script sync / local dev** — sync files to/from SN with watch mode; we have nothing
+- **Application scope management** — switch scope via UI API; we have nothing
+- **Progress reporting** — MCP `notifications/progress` for batch ops; we have nothing
+- **Catalog validation** — validate catalog item config; we have nothing
+
+---
+
+## Phase A — Background Script Execution (2 tools)
+
+> Execute server-side JavaScript via `sys_trigger` mechanism — critical for platform development.
+
+- [x] `src/tools/background-scripts.ts`
+  - [x] `sn_execute_background_script` — Create one-shot `sys_trigger` (trigger_type=0, state=0, next_action=now+1s), wrap script in try/finally self-delete. Falls back to local fix script.
+  - [x] `sn_create_fix_script` — Create local `.js` file in `scripts/` for manual execution in SN's Scripts-Background UI.
+- [x] Register module in `server.ts` with key `background_scripts`
+- [x] Add to `platform_developer` and `full` packages
+
+## Phase B — Platform Script Types (25 tools, 5 per type)
+
+> CRUD for all major ServiceNow scripting record types.
+
+- [x] `src/tools/platform-scripts.ts`
+  - Business Rules (`sys_script`): list, get, create, update, delete
+    - Key fields: name, table, when (before/after/async/display), order, script, condition, active, filter_condition
+  - Client Scripts (`sys_script_client`): list, get, create, update, delete
+    - Key fields: name, table, type (onChange/onLoad/onSubmit/onCellEdit), script, field_name, active
+  - UI Policies (`sys_ui_policy`): list, get, create, update, delete
+    - Key fields: table, short_description, conditions, script_true, script_false, on_load, reverse_if_false, active
+  - UI Actions (`sys_ui_action`): list, get, create, update, delete
+    - Key fields: name, table, script, condition, active, form_button, form_link, list_button, list_link, order
+  - UI Scripts (`sys_ui_script`): list, get, create, update, delete
+    - Key fields: name, script, active, description, global
+- [x] Register module in `server.ts` with key `platform_scripts`
+- [x] Add to `platform_developer` and `full` packages
+
+## Phase C — Enhanced Workflow Orchestration (4 new tools)
+
+> One-call workflow building: base → version → activities → transitions → publish.
+
+- [x] Enhance `src/tools/workflows.ts`
+  - [x] `sn_create_workflow_full` — Orchestrate: wf_workflow → wf_workflow_version → wf_activity[] → wf_transition[] → optional publish. Activities referenced by name. Returns full created structure.
+  - [x] `sn_create_workflow_activity` — Add activity to existing workflow version
+  - [x] `sn_create_workflow_transition` — Create transition between activities with optional wf_condition
+  - [x] `sn_publish_workflow` — Set start activity + published=true on a workflow version
+
+## Phase D — Scripted REST API Management (7 tools)
+
+> Full CRUD for Scripted REST APIs and their resources/operations.
+
+- [x] `src/tools/scripted-rest.ts`
+  - [x] `sn_list_scripted_rest_apis` — List `sys_ws_definition` records
+  - [x] `sn_get_scripted_rest_api` — Get API + all `sys_ws_operation` records in parallel
+  - [x] `sn_create_scripted_rest_api` — Create API definition (name, namespace, base_uri, active)
+  - [x] `sn_update_scripted_rest_api` — Update API definition
+  - [x] `sn_create_rest_resource` — Create `sys_ws_operation` (method, path, script, produces, consumes)
+  - [x] `sn_update_rest_resource` — Update operation
+  - [x] `sn_delete_rest_resource` — Delete operation
+- [x] Register module in `server.ts` with key `scripted_rest`
+- [x] Add to `platform_developer`, `full` packages. Add to new `integration_developer` package.
+
+## Phase E — Service Portal Widgets (5 tools)
+
+- [ ] `src/tools/widgets.ts`
+  - [ ] `sn_list_widgets` — List `sp_widget` with name/category filters
+  - [ ] `sn_get_widget` — Get widget with all script bodies
+  - [ ] `sn_create_widget` — Create widget with template, css, client_script, server_script, link
+  - [ ] `sn_update_widget` — Update (push script changes)
+  - [ ] `sn_delete_widget` — Delete
+- [ ] Register module in `server.ts` with key `widgets`
+- [ ] Add to `platform_developer`, `full` packages. Add to new `portal_developer` package.
+
+## Phase F — UI Pages (5 tools)
+
+- [ ] `src/tools/ui-pages.ts`
+  - [ ] `sn_list_ui_pages` — List `sys_ui_page` records
+  - [ ] `sn_get_ui_page` — Get with html, client_script, processing_script
+  - [ ] `sn_create_ui_page` — Create page
+  - [ ] `sn_update_ui_page` — Update
+  - [ ] `sn_delete_ui_page` — Delete
+- [ ] Register + package
+
+## Phase G — Flow Designer (6 tools)
+
+> Read-only + basic create. Logic blocks can't be created via REST (SN limitation).
+
+- [ ] `src/tools/flows.ts`
+  - [ ] `sn_list_flows` — Query `sys_hub_flow`
+  - [ ] `sn_get_flow` — Get flow + logic + variables in parallel
+  - [ ] `sn_create_flow` — Create basic flow definition
+  - [ ] `sn_list_flow_variables` — List `sys_hub_flow_variable` for a flow
+  - [ ] `sn_create_flow_variable` — Create flow variable
+  - [ ] `sn_list_flow_stages` — List `sys_hub_flow_stage`
+- [ ] Register + package
+
+## Phase H — Application Scope Management (2 tools)
+
+- [ ] `src/tools/app-scope.ts`
+  - [ ] `sn_set_application_scope` — Switch via `/api/now/ui/concoursepicker/application`
+  - [ ] `sn_get_current_application` — Get current scope
+- [ ] Register + package
+
+## Phase I — Script Sync / Local Dev (3 tools)
+
+- [ ] `src/tools/script-sync.ts`
+  - [ ] `sn_sync_script_to_local` — Download script record to local file
+  - [ ] `sn_sync_local_to_script` — Upload local file to SN record
+  - [ ] `sn_watch_script` — Watch file for changes, auto-sync
+- [ ] `.sn-sync.json` manifest for mapping local paths to SN sys_ids
+- [ ] Register + package
+
+## Phase J — Progress Reporting (infrastructure)
+
+- [ ] Wire MCP SDK `notifications/progress` into batch, workflow orchestration, script sync
+- [ ] No new tools, just infra changes
+
+## Phase K — Problem Management (7 tools)
+
+- [ ] `src/tools/problems.ts` — Same pattern as incidents
+  - list, get, create, update, add_comment, add_work_notes, close
+- [ ] Tables: `problem`, `problem_task`
+
+## Phase L — Service Request / RITM (6 tools)
+
+- [ ] `src/tools/requests.ts`
+  - list_requests, get_request, list_request_items, get_request_item, update_request_item, submit_catalog_request
+
+## Phase M — Catalog Validation (1 tool)
+
+- [ ] Add `sn_validate_catalog_item` to `src/tools/catalog.ts`
+
+## Phase N — Extras (6 tools)
+
+- [ ] Attachments: upload, download via `/api/now/attachment/file`
+- [ ] Aggregation: `sn_aggregate_table` via `/api/now/stats/{table}`
+- [ ] Batch delete: `sn_batch_delete` in batch.ts
+- [ ] Import sets: `sn_create_import_set`, `sn_run_transform`
+
+---
+
+## Updated Tool Count Projection
+
+| Phase | New Tools | Running Total |
+|-------|-----------|---------------|
+| Current | 93 | 93 |
+| A: Background Scripts | +2 | 95 |
+| B: Platform Scripts | +25 | 120 |
+| C: Enhanced Workflows | +3 | 123 |
+| D: Scripted REST APIs | +7 | 130 |
+| E: Widgets | +5 | 135 |
+| F: UI Pages | +5 | 140 |
+| G: Flow Designer | +6 | 146 |
+| H: App Scope | +2 | 148 |
+| I: Script Sync | +3 | 151 |
+| J: Progress Reporting | +0 | 151 |
+| K: Problem Mgmt | +7 | 158 |
+| L: Requests/RITM | +6 | 164 |
+| M: Catalog Validation | +1 | 165 |
+| N: Extras | +6 | **171** |
