@@ -1,7 +1,7 @@
 {
   "name": "servicenow-mcp-server",
-  "version": "0.1.0",
-  "description": "MCP server for ServiceNow — 93 tools across incidents, changes, catalog, CMDB, users, knowledge, workflows, and more. Multi-instance support.",
+  "version": "0.4.0",
+  "description": "MCP server for ServiceNow — 176 tools across incidents, changes, problems, requests, catalog, CMDB, users, knowledge, workflows, and more. Multi-instance support.",
   "type": "module",
   "private": true,
   "scripts": {

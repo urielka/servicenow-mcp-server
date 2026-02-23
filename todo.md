@@ -422,7 +422,7 @@ servicenow-mcp-server/
 | NL Search | 1 | any |
 | Batch Operations | 3 | any |
 | Background Scripts | 2 | sys_trigger |
-| Platform Scripts | 30 | sys_script, sys_script_client, sys_ui_policy, sys_ui_action, sys_ui_script, sys_security_acl |
+| Platform Scripts | 25 | sys_script, sys_script_client, sys_ui_policy, sys_ui_action, sys_ui_script |
 | Scripted REST APIs | 7 | sys_ws_definition, sys_ws_operation |
 | Widgets | 5 | sp_widget |
 | UI Pages | 5 | sys_ui_page |
@@ -434,7 +434,7 @@ servicenow-mcp-server/
 | Attachments | 3 | sys_attachment |
 | Aggregation | 1 | any (via /api/now/stats) |
 | Import Sets | 2 | sys_import_set, sys_transform_map |
-| **Total** | **181** | |
+| **Total** | **176** | |
 
 ## MCP Resources: 7
 
@@ -780,11 +780,11 @@ Zero other deps. Bun provides native fetch, native test runner, native TypeScrip
 
 ## Updated Tool Count Projection
 
-> **Verified actual count: 181 tools, 279 tests across 26 test files.**
+> **Verified actual count: 176 tools, 279 tests across 26 test files.**
 >
 > Note: Running totals below are approximate — some phases added more tools than
-> originally planned (e.g., Platform Scripts registered 30 tools not 25, Schema
-> gained an extra tool in Phase S, Update Sets grew from 7→9 via Phases P/Q).
+> originally planned (e.g., Schema gained an extra tool in Phase S, Update Sets
+> grew from 7→9 via Phases P/Q, Catalog gained a validation tool in Phase M).
 
 | Phase | New Tools | Running Total | Status |
 |-------|-----------|---------------|--------|
@@ -808,4 +808,4 @@ Zero other deps. Bun provides native fetch, native test runner, native TypeScrip
 | K: Problem Mgmt | +7 | ~167 (247 tests) | **Done** |
 | L: Requests/RITM | +6 | ~173 (256 tests) | **Done** |
 | M: Catalog Validation | +1 | ~174 (264 tests) | **Done** |
-| N: Extras | +7 | **181** (279 tests) | **Done** |
+| N: Extras | +7 | **176** (279 tests) | **Done** |
