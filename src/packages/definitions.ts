@@ -41,9 +41,9 @@ export const TOOL_PACKAGES: Record<string, string[]> = {
     "scripted_rest", "widgets", "ui_pages", "app_scope", "script_sync",
   ],
 
-  /** System administrators — users, groups, schema */
+  /** System administrators — users, groups, schema, update sets */
   system_admin: [
-    "tables", "users", "schema", "search", "batch", "app_scope",
+    "tables", "users", "schema", "search", "batch", "app_scope", "changesets",
   ],
 
   /** Agile teams — stories, epics, tasks, projects */

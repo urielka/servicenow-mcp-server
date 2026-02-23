@@ -1,11 +1,12 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { InstanceRegistry } from "../client/registry.ts";
+import { getTableMetadata, isKnownTable, knownTableCount } from "../utils/table-metadata.ts";
 
 export function registerSchemaTools(server: McpServer, registry: InstanceRegistry): void {
 
   server.registerTool("sn_get_table_schema", {
-    description: "Get the schema (field definitions) for a ServiceNow table. Returns field names, types, labels, max lengths, mandatory flags, and reference targets.",
+    description: "Get the schema (field definitions) for a ServiceNow table. Returns field names, types, labels, max lengths, mandatory flags, and reference targets. If the table is in the static metadata cache, also returns display_field, key_field, required_fields, and common_fields.",
     inputSchema: {
       instance: z.string().optional().describe("Target ServiceNow instance name (from config). Uses default instance if omitted."),
       table: z.string().describe("Table name (e.g. 'incident', 'sys_user')"),
@@ -17,7 +18,16 @@ export function registerSchemaTools(server: McpServer, registry: InstanceRegistr
       sysparm_fields: "element,column_label,internal_type,max_length,mandatory,reference,default_value,active,read_only",
       sysparm_limit: 500, sysparm_display_value: "true", sysparm_exclude_reference_link: "true",
     });
-    return { content: [{ type: "text" as const, text: JSON.stringify({ table, field_count: result.records.length, fields: result.records }, null, 2) }] };
+
+    const response: Record<string, unknown> = { table, field_count: result.records.length, fields: result.records };
+
+    // Include cached metadata if available
+    const cached = getTableMetadata(table);
+    if (cached) {
+      response["cached_metadata"] = cached;
+    }
+
+    return { content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }] };
   });
 
   server.registerTool("sn_discover_table", {
@@ -56,11 +66,17 @@ export function registerSchemaTools(server: McpServer, registry: InstanceRegistr
       }));
     }
 
+    // Include cached metadata if available
+    const cached = getTableMetadata(table);
+    if (cached) {
+      response["cached_metadata"] = cached;
+    }
+
     return { content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }] };
   });
 
   server.registerTool("sn_list_tables", {
-    description: "List available tables in ServiceNow (from sys_db_object).",
+    description: "List available tables in ServiceNow (from sys_db_object). Tables with cached metadata are annotated with has_cached_metadata=true.",
     inputSchema: {
       instance: z.string().optional().describe("Target ServiceNow instance name (from config). Uses default instance if omitted."),
       query: z.string().optional().describe("Filter by name (LIKE match)"),
@@ -73,6 +89,13 @@ export function registerSchemaTools(server: McpServer, registry: InstanceRegistr
       sysparm_query: q, sysparm_fields: "sys_id,name,label,super_class",
       sysparm_limit: limit, sysparm_display_value: "true", sysparm_exclude_reference_link: "true",
     });
-    return { content: [{ type: "text" as const, text: JSON.stringify({ count: result.records.length, tables: result.records }, null, 2) }] };
+
+    // Annotate tables that have cached metadata
+    const tables = result.records.map((rec) => {
+      const name = typeof rec["name"] === "string" ? rec["name"] : "";
+      return { ...rec, has_cached_metadata: isKnownTable(name) };
+    });
+
+    return { content: [{ type: "text" as const, text: JSON.stringify({ count: result.records.length, cached_table_count: knownTableCount(), tables }, null, 2) }] };
   });
 }

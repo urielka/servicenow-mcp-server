@@ -78,7 +78,7 @@ export function createServer(config: Config): McpServer {
   // Create MCP server
   const server = new McpServer({
     name: "servicenow-mcp-server",
-    version: "0.3.0",
+    version: "0.4.0",
   });
 
   // Get the tool filter for the selected package

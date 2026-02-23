@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { InstanceRegistry } from "../client/registry.ts";
+import { getTableMetadata } from "../utils/table-metadata.ts";
 
 /**
  * Generic Table API tools — CRUD on any ServiceNow table.
@@ -11,12 +12,12 @@ export function registerTableTools(server: McpServer, registry: InstanceRegistry
   server.registerTool(
     "sn_query_table",
     {
-      description: "Query records from any ServiceNow table. Supports encoded queries, field selection, pagination, and display values. Use ServiceNow encoded query syntax (e.g. 'active=true^priority=1^ORDERBYDESCsys_created_on').",
+      description: "Query records from any ServiceNow table. Supports encoded queries, field selection, pagination, and display values. If fields are not specified and the table has cached metadata, common fields are used automatically.",
       inputSchema: {
         instance: z.string().optional().describe("Target ServiceNow instance name (from config). Uses default instance if omitted."),
         table: z.string().describe("Table name (e.g. 'incident', 'sys_user', 'change_request')"),
         query: z.string().optional().describe("Encoded query string (e.g. 'active=true^priority<=2')"),
-        fields: z.string().optional().describe("Comma-separated field names to return (e.g. 'number,short_description,state')"),
+        fields: z.string().optional().describe("Comma-separated field names to return. If omitted and table has cached metadata, common fields are used."),
         limit: z.number().int().min(1).max(1000).default(10).describe("Max records to return (1-1000, default 10)"),
         offset: z.number().int().min(0).default(0).describe("Starting record index for pagination"),
         display_value: z.enum(["true", "false", "all"]).default("false").describe("Return display values: 'true' (display only), 'false' (raw only), 'all' (both)"),
@@ -24,9 +25,17 @@ export function registerTableTools(server: McpServer, registry: InstanceRegistry
     },
     async ({ instance, table, query, fields, limit, offset, display_value }) => {
       const client = registry.resolve(instance);
+
+      // Use cached common_fields as default if caller didn't specify fields
+      let effectiveFields = fields;
+      const meta = getTableMetadata(table);
+      if (!effectiveFields && meta && meta.common_fields.length > 0) {
+        effectiveFields = ["sys_id", ...meta.common_fields].join(",");
+      }
+
       const result = await client.queryTable(table, {
         sysparm_query: query,
-        sysparm_fields: fields,
+        sysparm_fields: effectiveFields,
         sysparm_limit: limit,
         sysparm_offset: offset,
         sysparm_display_value: display_value,
@@ -42,6 +51,7 @@ export function registerTableTools(server: McpServer, registry: InstanceRegistry
                 table,
                 count: result.records.length,
                 pagination: result.pagination,
+                ...(meta ? { table_label: meta.label, display_field: meta.display_field } : {}),
                 records: result.records,
               },
               null,

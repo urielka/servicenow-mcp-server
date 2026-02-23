@@ -690,29 +690,20 @@ Zero other deps. Bun provides native fetch, native test runner, native TypeScrip
 > Their `SN-Move-Records-To-Update-Set` and `SN-Clone-Update-Set` tools. Useful for developers
 > reorganizing work across update sets or duplicating a set as a starting point.
 
-- [ ] Add to `src/tools/changesets.ts`:
-  - [ ] `sn_move_to_update_set` — Move records to a target update set. Accepts:
-    - `target_update_set` (sys_id) — destination update set
-    - `sys_ids` (string[]) — specific `sys_update_xml` records to move, OR
-    - `source_update_set` (sys_id) — move all records from another set, OR
-    - `since` / `until` (datetime) — move records by time range
-    - Implementation: query `sys_update_xml` with filters, batch-update `update_set` field
-  - [ ] `sn_clone_update_set` — Clone an update set (create new set + copy all `sys_update_xml` records)
-    - `source_update_set` (sys_id)
-    - `name` (string) — name for the new set
-    - Implementation: create new `sys_update_set`, query source's `sys_update_xml`, create copies pointing to new set
-- [ ] Register in packages: `platform_developer`, `system_admin`, `full`
+- [x] Add to `src/tools/changesets.ts`:
+  - [x] `sn_move_to_update_set` — Move records by sys_ids, source update set, or time range. Reports moved/failed counts.
+  - [x] `sn_clone_update_set` — Clone an update set (create new set + copy all `sys_update_xml` records with name/type/target_name/payload/category/action)
+- [x] Register in packages: `platform_developer`, `system_admin`, `full` (added `changesets` to `system_admin`)
 
 ## Phase Q — Update Set Inspection (enhancement to existing tool)
 
 > Their inspection groups `sys_update_xml` records by type and shows component breakdown.
 > Our `sn_get_update_set` just returns raw records. This enriches the response.
 
-- [ ] Enhance `sn_get_update_set` in `src/tools/changesets.ts`:
-  - [ ] After fetching `sys_update_xml` records, group them by `type` field
-  - [ ] Return structured breakdown: `{ components: { "Business Rule": [...], "UI Policy": [...], ... }, summary: { total: N, by_type: { "Business Rule": 3, ... } } }`
-  - [ ] Include `action` (INSERT/UPDATE/DELETE) in each component entry
-- [ ] Update existing tests if any for `sn_get_update_set`
+- [x] Enhance `sn_get_update_set` in `src/tools/changesets.ts`:
+  - [x] After fetching `sys_update_xml` records, group them by `type` field
+  - [x] Return structured breakdown: `{ summary: { total_records, types, by_type }, components: { "Business Rule": [...], ... } }`
+  - [x] Include `action` (INSERT/UPDATE/DELETE) in each component entry
 
 ## Phase R — Static Table Metadata Cache
 
@@ -720,16 +711,22 @@ Zero other deps. Bun provides native fetch, native test runner, native TypeScrip
 > required_fields. This avoids hitting the live API for common schema lookups and enables
 > better tool descriptions and validation.
 
-- [ ] `src/config/table-definitions.json` — Static metadata for ~100 common SN tables
-  - [ ] Fields per entry: `table`, `label`, `key_field`, `display_field`, `required_fields[]`, `common_fields[]`
-  - [ ] Cover: task-based tables (incident, change_request, problem, sc_request, sc_req_item, sc_task), sys tables (sys_user, sys_user_group, sys_user_role, sys_choice), CMDB (cmdb_ci, cmdb_ci_server, cmdb_ci_service), knowledge (kb_knowledge, kb_category), catalog (sc_catalog, sc_cat_item, sc_cat_item_category, sc_variable), platform (sys_script, sys_script_include, sys_ui_policy, sys_ui_action, sys_ui_script, sys_ui_page), update sets (sys_update_set, sys_update_xml), workflows (wf_workflow, wf_workflow_version, wf_activity), flows (sys_hub_flow), REST (sys_web_service, sys_rest_message), widgets (sp_widget, sp_portal, sp_page), agile (rm_story, rm_epic, rm_sprint), and more
-- [ ] `src/utils/table-metadata.ts` — Loader + lookup functions
-  - [ ] `getTableMetadata(tableName): TableDefinition | undefined`
-  - [ ] `getDisplayField(tableName): string` — returns display_field or falls back to `"name"`
-  - [ ] `getRequiredFields(tableName): string[]`
-  - [ ] `isKnownTable(tableName): boolean`
-- [ ] Wire into `src/tools/tables.ts` — use display_field for better query defaults
-- [ ] Wire into `src/tools/schema.ts` — return cached metadata alongside live API results when available
+- [x] `src/config/table-definitions.json` — Static metadata for 100 common SN tables
+  - [x] Fields per entry: `label`, `key_field`, `display_field`, `required_fields[]`, `common_fields[]`
+  - [x] Covers: ITSM (incident, change_request, problem, sc_request, sc_req_item, sc_task, task), users (sys_user, sys_user_group, sys_user_role, sys_user_grmember, sys_user_has_role), CMDB (cmdb_ci, cmdb_ci_server, cmdb_ci_service, cmdb_ci_computer, cmdb_ci_database, cmdb_ci_app_server, cmdb_rel_ci), knowledge (kb_knowledge, kb_knowledge_base, kb_category), catalog (sc_catalog, sc_cat_item, sc_cat_item_category, item_option_new, sc_cat_item_producer), platform scripts (sys_script, sys_script_include, sys_ui_policy, sys_ui_action, sys_ui_script, sys_client_script, sys_ui_page), update sets (sys_update_set, sys_update_xml), workflows (wf_workflow, wf_workflow_version, wf_activity), flows (sys_hub_flow, sys_hub_flow_variable, sys_hub_flow_stage), REST (sys_web_service, sys_ws_operation, sys_rest_message, sys_rest_message_fn), widgets (sp_widget, sp_portal, sp_page, sp_instance, sp_header_footer), agile (rm_story, rm_epic, rm_sprint, rm_scrum_task), projects (pm_project, pm_project_task), approvals, emails, events, imports, security ACLs, assets, reports, dashboards, and more
+- [x] `src/utils/table-metadata.ts` — Loader + lookup functions
+  - [x] `getTableMetadata(tableName): TableDefinition | undefined`
+  - [x] `getDisplayField(tableName): string` — returns display_field or falls back to `"name"`
+  - [x] `getKeyField(tableName): string` — returns key_field or falls back to `"sys_id"`
+  - [x] `getRequiredFields(tableName): string[]`
+  - [x] `getCommonFields(tableName): string[]`
+  - [x] `isKnownTable(tableName): boolean`
+  - [x] `listKnownTables(): string[]`
+  - [x] `knownTableCount(): number`
+- [x] Wire into `src/tools/tables.ts` — `sn_query_table` auto-uses cached common_fields when caller omits `fields` param; includes `table_label` and `display_field` in response
+- [x] Wire into `src/tools/schema.ts` — `sn_get_table_schema`, `sn_discover_table` include `cached_metadata` in response; `sn_list_tables` annotates each table with `has_cached_metadata`
+- [x] Added `resolveJsonModule` to tsconfig.json for JSON imports
+- [x] Tests in `tests/utils/table-metadata.test.ts` (17 tests)
 
 ## Phase S — Enhanced Schema Discovery (enhancements to existing tools)
 
@@ -782,8 +779,8 @@ Zero other deps. Bun provides native fetch, native test runner, native TypeScrip
 | M: Catalog Validation | +1 | 165 | Pending |
 | N: Extras | +6 | 171 | Pending |
 | O: Smart Resolution | +0 (enhancements) | 171 | **Done** ⚡ |
-| P: Update Set Move/Clone | +2 | 173 | Pending |
-| Q: Update Set Inspection | +0 (enhancement) | 173 | Pending |
-| R: Static Table Metadata | +0 (infra) | 173 | Pending |
+| P: Update Set Move/Clone | +2 | 173 | **Done** |
+| Q: Update Set Inspection | +0 (enhancement) | 173 | **Done** |
+| R: Static Table Metadata | +0 (infra) | 173 | **Done** |
 | S: Enhanced Schema | +1 | 174 | Pending |
 | T: Progress Reporting | +0 (infra) | **174** | Pending |
