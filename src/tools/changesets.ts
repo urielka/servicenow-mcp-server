@@ -2,6 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { InstanceRegistry } from "../client/registry.ts";
 import { joinQueries } from "../utils/query.ts";
+import { createProgressReporter, type ToolExtra } from "../utils/progress.ts";
 
 export function registerChangesetTools(server: McpServer, registry: InstanceRegistry): void {
 
@@ -150,7 +151,7 @@ export function registerChangesetTools(server: McpServer, registry: InstanceRegi
       since: z.string().optional().describe("Move records created on or after this datetime (YYYY-MM-DD HH:MM:SS)"),
       until: z.string().optional().describe("Move records created on or before this datetime (YYYY-MM-DD HH:MM:SS)"),
     },
-  }, async ({ instance, target_update_set, sys_ids, source_update_set, since, until }) => {
+  }, async ({ instance, target_update_set, sys_ids, source_update_set, since, until }, extra: ToolExtra) => {
     const client = registry.resolve(instance);
 
     // Build query to find records to move
@@ -185,6 +186,7 @@ export function registerChangesetTools(server: McpServer, registry: InstanceRegi
     }
 
     // Move each record by updating update_set field
+    const progress = createProgressReporter(extra, toMove.records.length);
     const results: { moved: number; failed: number; records: Array<Record<string, unknown>>; errors: Array<Record<string, unknown>> } = {
       moved: 0, failed: 0, records: [], errors: [],
     };
@@ -200,8 +202,10 @@ export function registerChangesetTools(server: McpServer, registry: InstanceRegi
         results.failed++;
         results.errors.push({ sys_id: recSysId, error: err instanceof Error ? err.message : String(err) });
       }
+      await progress.advance(1, `Moving record ${results.moved + results.failed}/${toMove.records.length}`);
     }
 
+    await progress.complete(`Moved ${results.moved} records`);
     return { content: [{ type: "text" as const, text: JSON.stringify({
       moved: results.moved,
       failed: results.failed,
@@ -220,7 +224,7 @@ export function registerChangesetTools(server: McpServer, registry: InstanceRegi
       name: z.string().describe("Name for the new (cloned) update set"),
       description: z.string().optional().describe("Description for the new update set (defaults to 'Clone of: <source name>')"),
     },
-  }, async ({ instance, source_update_set, name, description }) => {
+  }, async ({ instance, source_update_set, name, description }, extra: ToolExtra) => {
     const client = registry.resolve(instance);
 
     // Fetch source update set details
@@ -254,6 +258,7 @@ export function registerChangesetTools(server: McpServer, registry: InstanceRegi
     });
 
     // Clone each record into the new update set
+    const progress = createProgressReporter(extra, sourceRecords.records.length);
     let cloned = 0;
     let failed = 0;
     for (const rec of sourceRecords.records) {
@@ -267,8 +272,10 @@ export function registerChangesetTools(server: McpServer, registry: InstanceRegi
       } catch {
         failed++;
       }
+      await progress.advance(1, `Cloning record ${cloned + failed}/${sourceRecords.records.length}`);
     }
 
+    await progress.complete(`Cloned ${cloned} records`);
     return { content: [{ type: "text" as const, text: JSON.stringify({
       cloned: true,
       new_update_set: { sys_id: newSetSysId, name },

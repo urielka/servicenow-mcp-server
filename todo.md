@@ -734,28 +734,34 @@ Zero other deps. Bun provides native fetch, native test runner, native TypeScrip
 > and field constraints alongside basic dictionary info. Our schema tools only query
 > `sys_db_object` + `sys_dictionary` + reference extraction.
 
-- [ ] Enhance `sn_get_table_schema` in `src/tools/schema.ts`:
-  - [ ] Add optional `include_choices` (boolean) — fetch `sys_choice` records for choice/reference fields
-  - [ ] Add optional `include_policies` (boolean) — fetch `sys_ui_policy` records attached to the table
-  - [ ] Add optional `include_business_rules` (boolean) — fetch `sys_script` records for the table
-  - [ ] Add optional `include_constraints` (boolean) — fetch `sys_dictionary` constraint info (max_length, mandatory, read_only, default_value)
-  - [ ] All optional params default to `false` to keep current behavior unchanged
-- [ ] New tool `sn_explain_field` in `src/tools/schema.ts`:
-  - [ ] Input: `table`, `field`
-  - [ ] Returns: field type, label, max_length, mandatory, read_only, default_value, reference target, choice list (if applicable), dependent field, help text (`sys_documentation`), known REST API issues/gotchas (from static map)
-  - [ ] Query: `sys_dictionary` + `sys_documentation` + `sys_choice` (if choice field) in parallel
+- [x] Enhance `sn_get_table_schema` in `src/tools/schema.ts`:
+  - [x] Add optional `include_choices` (boolean) — fetch `sys_choice` records grouped by field
+  - [x] Add optional `include_policies` (boolean) — fetch `sys_data_policy2` records for the table
+  - [x] Add optional `include_business_rules` (boolean) — fetch `sys_script` records for the table
+  - [x] Add optional `include_constraints` (boolean) — fetch `sys_index` constraint info
+  - [x] All optional params default to `false` to keep current behavior unchanged
+  - [x] All enrichment queries run in parallel with the base dictionary fetch
+- [x] New tool `sn_explain_field` in `src/tools/schema.ts`:
+  - [x] Input: `table`, `field`
+  - [x] Returns: field type, label, max_length, mandatory, read_only, default_value, reference target, calculation, dependent_on_field, display flag, help/hint text, choice list
+  - [x] Query: `sys_dictionary` + `sys_documentation` + `sys_choice` in parallel
+  - [x] Includes cached_hints from static table metadata (is_required, is_common_field, is_display_field)
+- [x] Tests: 16 tests in `tests/tools/schema.test.ts`
 
 ## Phase T — Progress Reporting (replaces Phase J)
 
 > Wire MCP SDK `notifications/progress` for long-running operations. Their server reports
 > progress with adaptive frequency for batch/workflow/move operations.
 
-- [ ] `src/utils/progress.ts` — Progress reporting utility
-  - [ ] `createProgressReporter(server, token, total)` — returns `{ advance(n?), complete(), fail(msg) }`
-  - [ ] Adaptive frequency: skip notifications if < 100ms since last one (avoid flooding)
-  - [ ] Wire into `sn_batch_update` / `sn_batch_create` in `src/tools/batch.ts`
-  - [ ] Wire into `sn_move_to_update_set` (Phase P) and `sn_clone_update_set`
-  - [ ] Wire into `sn_watch_and_sync` in `src/tools/script-sync.ts`
+- [x] `src/utils/progress.ts` — Progress reporting utility
+  - [x] `createProgressReporter(extra, total)` — returns `{ advance(n?, message?), complete(message?), fail(msg) }`
+  - [x] Adaptive throttling: skip notifications if < 100ms since last one (avoid flooding)
+  - [x] `force` flag on complete/fail to bypass throttling
+  - [x] No-op when client doesn't provide `progressToken` (safe to call unconditionally)
+  - [x] Wire into `sn_batch_update` / `sn_batch_create` in `src/tools/batch.ts`
+  - [x] Wire into `sn_move_to_update_set` and `sn_clone_update_set` in `src/tools/changesets.ts`
+  - [x] Wire into `sn_sync_script_to_local` in `src/tools/script-sync.ts`
+- [x] Tests: 19 tests in `tests/utils/progress.test.ts`
 
 ---
 
@@ -772,15 +778,15 @@ Zero other deps. Bun provides native fetch, native test runner, native TypeScrip
 | F: UI Pages | +5 | 141 | Done |
 | G: Flow Designer | +6 | 147 | Done |
 | H: App Scope | +2 | 149 | Done |
-| I: Script Sync | +3 | **151** | **Done** |
+| I: Script Sync | +3 | 151 | Done |
 | J: Progress Reporting | — | — | Replaced by Phase T |
-| K: Problem Mgmt | +7 | 158 | Pending |
-| L: Requests/RITM | +6 | 164 | Pending |
-| M: Catalog Validation | +1 | 165 | Pending |
-| N: Extras | +6 | 171 | Pending |
-| O: Smart Resolution | +0 (enhancements) | 171 | **Done** ⚡ |
-| P: Update Set Move/Clone | +2 | 173 | **Done** |
-| Q: Update Set Inspection | +0 (enhancement) | 173 | **Done** |
-| R: Static Table Metadata | +0 (infra) | 173 | **Done** |
-| S: Enhanced Schema | +1 | 174 | Pending |
-| T: Progress Reporting | +0 (infra) | **174** | Pending |
+| O: Smart Resolution | +0 (enhancements) | 151 | **Done** |
+| P: Update Set Move/Clone | +2 | 153 | **Done** |
+| Q: Update Set Inspection | +0 (enhancement) | 153 | **Done** |
+| R: Static Table Metadata | +0 (infra) | 153 | **Done** |
+| S: Enhanced Schema | +1 | **154** (217 tests) | **Done** |
+| T: Progress Reporting | +0 (infra) | **154** (236 tests) | **Done** |
+| K: Problem Mgmt | +7 | 161 | Pending |
+| L: Requests/RITM | +6 | 167 | Pending |
+| M: Catalog Validation | +1 | 168 | Pending |
+| N: Extras | +6 | **174** | Pending |

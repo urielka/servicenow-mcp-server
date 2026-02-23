@@ -2,6 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { InstanceRegistry } from "../client/registry.ts";
 import { logger } from "../utils/logger.ts";
+import { createProgressReporter, type ToolExtra } from "../utils/progress.ts";
 
 /**
  * Script Sync / Local Development tools.
@@ -62,7 +63,7 @@ export function registerScriptSyncTools(server: McpServer, registry: InstanceReg
       output_dir: z.string().default("scripts").describe("Local directory to save to. Default: 'scripts'"),
       field: z.string().optional().describe("Specific field to download (e.g. 'script', 'server_script'). If omitted, downloads all script fields for the record type."),
     },
-  }, async ({ instance, table, sys_id, output_dir, field }) => {
+  }, async ({ instance, table, sys_id, output_dir, field }, extra: ToolExtra) => {
     const client = registry.resolve(instance);
 
     // Fetch the record
@@ -74,6 +75,9 @@ export function registerScriptSyncTools(server: McpServer, registry: InstanceReg
     const recordName = (record["name"] ?? record["short_description"] ?? record["id"] ?? sys_id) as string;
     const safeName = recordName.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
     const fields = field ? [field] : (SCRIPT_FIELD_MAP[table] ?? ["script"]);
+
+    // Steps: write files + write manifest = fields.length + 1
+    const progress = createProgressReporter(extra, fields.length + 1);
 
     const { mkdirSync, existsSync } = await import("node:fs");
     if (!existsSync(output_dir)) {
@@ -90,6 +94,7 @@ export function registerScriptSyncTools(server: McpServer, registry: InstanceReg
       const filePath = `${output_dir}/${safeName}${ext}`;
       await Bun.write(filePath, content);
       written.push({ field: f, path: filePath, size: content.length });
+      await progress.advance(1, `Wrote ${f}`);
     } else {
       // Multiple fields → subdirectory with one file per field
       const subDir = `${output_dir}/${safeName}`;
@@ -102,6 +107,7 @@ export function registerScriptSyncTools(server: McpServer, registry: InstanceReg
         const filePath = `${subDir}/${f}${ext}`;
         await Bun.write(filePath, content);
         written.push({ field: f, path: filePath, size: content.length });
+        await progress.advance(1, `Wrote ${f}`);
       }
     }
 
@@ -126,6 +132,7 @@ export function registerScriptSyncTools(server: McpServer, registry: InstanceReg
     };
 
     await Bun.write(manifestPath, JSON.stringify(manifest, null, 2));
+    await progress.complete(`Synced ${written.length} file(s)`);
 
     logger.info(`Synced ${recordName} (${table}) to ${written.length} local file(s)`);
 
