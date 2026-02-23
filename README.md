@@ -30,7 +30,7 @@ A comprehensive [Model Context Protocol](https://modelcontextprotocol.io) (MCP) 
 ### Install & Configure
 
 ```bash
-git clone <this-repo>
+git clone git@github.com:seemsindie/servicenow-mcp-server.git
 cd servicenow-mcp-server
 bun install
 
