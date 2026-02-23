@@ -2,6 +2,11 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { InstanceRegistry } from "../client/registry.ts";
 import { joinQueries } from "../utils/query.ts";
+import {
+  resolveUserIdentifier,
+  resolveGroupIdentifier,
+  type ResolvableClient,
+} from "../utils/resolve.ts";
 
 export function registerUserTools(server: McpServer, registry: InstanceRegistry): void {
 
@@ -195,53 +200,73 @@ export function registerUserTools(server: McpServer, registry: InstanceRegistry)
   server.registerTool(
     "sn_add_group_members",
     {
-      description: "Add one or more users to a group in ServiceNow.",
+      description: "Add one or more users to a group in ServiceNow. Accepts human-readable names for both group and users (auto-resolved to sys_ids).",
       inputSchema: {
         instance: z.string().optional().describe("Target ServiceNow instance name (from config). Uses default instance if omitted."),
-        group_sys_id: z.string().describe("Group sys_id"),
-        user_sys_ids: z.array(z.string()).describe("Array of user sys_ids to add"),
+        group_sys_id: z.string().describe("Group sys_id or group name (auto-resolved)"),
+        user_sys_ids: z.array(z.string()).describe("Array of user sys_ids, user_names, emails, or full names (auto-resolved)"),
       },
     },
     async ({ instance, group_sys_id, user_sys_ids }) => {
       const client = registry.resolve(instance);
+      const rc = client as unknown as ResolvableClient;
+
+      // Resolve group identifier
+      const resolvedGroup = await resolveGroupIdentifier(rc, group_sys_id);
+
+      // Resolve all user identifiers in parallel
+      const resolvedUsers = await Promise.all(
+        user_sys_ids.map((uid) => resolveUserIdentifier(rc, uid))
+      );
+
       const results = [];
-      for (const userId of user_sys_ids) {
+      for (const resolvedUser of resolvedUsers) {
         const record = await client.createRecord("sys_user_grmember", {
-          group: group_sys_id,
-          user: userId,
+          group: resolvedGroup.sys_id,
+          user: resolvedUser.sys_id,
         });
-        results.push({ user: userId, sys_id: record["sys_id"] });
+        results.push({ user: resolvedUser.sys_id, display: resolvedUser.display ?? resolvedUser.original, sys_id: record["sys_id"] });
       }
-      return { content: [{ type: "text" as const, text: JSON.stringify({ added: results.length, members: results }, null, 2) }] };
+      return { content: [{ type: "text" as const, text: JSON.stringify({ added: results.length, group: resolvedGroup.display ?? resolvedGroup.original, members: results }, null, 2) }] };
     }
   );
 
   server.registerTool(
     "sn_remove_group_members",
     {
-      description: "Remove one or more users from a group in ServiceNow.",
+      description: "Remove one or more users from a group in ServiceNow. Accepts human-readable names for both group and users (auto-resolved to sys_ids).",
       inputSchema: {
         instance: z.string().optional().describe("Target ServiceNow instance name (from config). Uses default instance if omitted."),
-        group_sys_id: z.string().describe("Group sys_id"),
-        user_sys_ids: z.array(z.string()).describe("Array of user sys_ids to remove"),
+        group_sys_id: z.string().describe("Group sys_id or group name (auto-resolved)"),
+        user_sys_ids: z.array(z.string()).describe("Array of user sys_ids, user_names, emails, or full names (auto-resolved)"),
       },
     },
     async ({ instance, group_sys_id, user_sys_ids }) => {
       const client = registry.resolve(instance);
+      const rc = client as unknown as ResolvableClient;
+
+      // Resolve group identifier
+      const resolvedGroup = await resolveGroupIdentifier(rc, group_sys_id);
+
+      // Resolve all user identifiers in parallel
+      const resolvedUsers = await Promise.all(
+        user_sys_ids.map((uid) => resolveUserIdentifier(rc, uid))
+      );
+
       const removed = [];
-      for (const userId of user_sys_ids) {
+      for (const resolvedUser of resolvedUsers) {
         const result = await client.queryTable("sys_user_grmember", {
-          sysparm_query: `group=${group_sys_id}^user=${userId}`,
+          sysparm_query: `group=${resolvedGroup.sys_id}^user=${resolvedUser.sys_id}`,
           sysparm_fields: "sys_id",
           sysparm_limit: 1,
         });
         const membership = result.records[0];
         if (membership && typeof membership["sys_id"] === "string") {
           await client.deleteRecord("sys_user_grmember", membership["sys_id"]);
-          removed.push(userId);
+          removed.push({ sys_id: resolvedUser.sys_id, display: resolvedUser.display ?? resolvedUser.original });
         }
       }
-      return { content: [{ type: "text" as const, text: JSON.stringify({ removed: removed.length, users: removed }, null, 2) }] };
+      return { content: [{ type: "text" as const, text: JSON.stringify({ removed: removed.length, group: resolvedGroup.display ?? resolvedGroup.original, users: removed }, null, 2) }] };
     }
   );
 }

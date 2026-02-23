@@ -2,6 +2,12 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { InstanceRegistry } from "../client/registry.ts";
 import { joinQueries } from "../utils/query.ts";
+import {
+  resolveOptionalUser,
+  resolveOptionalGroup,
+  resolveRecordIdentifier,
+  type ResolvableClient,
+} from "../utils/resolve.ts";
 
 export function registerChangeTools(server: McpServer, registry: InstanceRegistry): void {
 
@@ -66,7 +72,7 @@ export function registerChangeTools(server: McpServer, registry: InstanceRegistr
   server.registerTool(
     "sn_create_change_request",
     {
-      description: "Create a new change request in ServiceNow.",
+      description: "Create a new change request in ServiceNow. Accepts human-readable names for assigned_to (user name, user_name, or email) and assignment_group (group name). These are auto-resolved to sys_ids.",
       inputSchema: {
         instance: z.string().optional().describe("Target ServiceNow instance name (from config). Uses default instance if omitted."),
         short_description: z.string().describe("Brief description"),
@@ -74,8 +80,8 @@ export function registerChangeTools(server: McpServer, registry: InstanceRegistr
         type: z.enum(["normal", "standard", "emergency"]).default("normal"),
         risk: z.enum(["1", "2", "3", "4"]).optional().describe("1=Very High, 2=High, 3=Moderate, 4=Low"),
         impact: z.enum(["1", "2", "3"]).optional().describe("1=High, 2=Medium, 3=Low"),
-        assignment_group: z.string().optional(),
-        assigned_to: z.string().optional(),
+        assignment_group: z.string().optional().describe("Assignment group sys_id or group name (auto-resolved)"),
+        assigned_to: z.string().optional().describe("Assigned user sys_id, user_name, email, or full name (auto-resolved)"),
         start_date: z.string().optional().describe("Planned start date (YYYY-MM-DD HH:MM:SS)"),
         end_date: z.string().optional().describe("Planned end date"),
         justification: z.string().optional(),
@@ -86,10 +92,21 @@ export function registerChangeTools(server: McpServer, registry: InstanceRegistr
     },
     async (params) => {
       const client = registry.resolve(params.instance);
+      const rc = client as unknown as ResolvableClient;
+
       const data: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(params)) {
-        if (v !== undefined && k !== "instance") data[k] = v;
+        if (v !== undefined && k !== "instance" && k !== "assigned_to" && k !== "assignment_group") data[k] = v;
       }
+
+      // Resolve human-readable identifiers to sys_ids
+      const [assignedTo, assignmentGroup] = await Promise.all([
+        resolveOptionalUser(rc, params.assigned_to),
+        resolveOptionalGroup(rc, params.assignment_group),
+      ]);
+      if (assignedTo) data["assigned_to"] = assignedTo;
+      if (assignmentGroup) data["assignment_group"] = assignmentGroup;
+
       const record = await client.createRecord("change_request", data);
       return { content: [{ type: "text" as const, text: JSON.stringify({ created: true, number: record["number"], sys_id: record["sys_id"], record }, null, 2) }] };
     }
@@ -98,16 +115,33 @@ export function registerChangeTools(server: McpServer, registry: InstanceRegistr
   server.registerTool(
     "sn_update_change_request",
     {
-      description: "Update an existing change request.",
+      description: "Update an existing change request. Accepts CHG number (e.g. 'CHG0010001') or sys_id. User/group fields in data accept human-readable names (auto-resolved).",
       inputSchema: {
         instance: z.string().optional().describe("Target ServiceNow instance name (from config). Uses default instance if omitted."),
-        sys_id: z.string().describe("Change request sys_id"),
-        data: z.record(z.string(), z.unknown()).describe("Fields to update"),
+        sys_id: z.string().describe("Change request sys_id or number (e.g. 'CHG0010001' — auto-resolved)"),
+        data: z.record(z.string(), z.unknown()).describe("Fields to update. User fields (assigned_to, requested_by) accept names/user_names. Group fields (assignment_group) accept group names."),
       },
     },
     async ({ instance, sys_id, data }) => {
       const client = registry.resolve(instance);
-      const record = await client.updateRecord("change_request", sys_id, data);
+      const rc = client as unknown as ResolvableClient;
+
+      // Resolve change identifier
+      const resolved = await resolveRecordIdentifier(rc, sys_id, "change_request");
+
+      // Resolve user/group fields in data if present
+      const resolvedData = { ...data };
+      if (typeof resolvedData["assigned_to"] === "string") {
+        resolvedData["assigned_to"] = await resolveOptionalUser(rc, resolvedData["assigned_to"] as string);
+      }
+      if (typeof resolvedData["requested_by"] === "string") {
+        resolvedData["requested_by"] = await resolveOptionalUser(rc, resolvedData["requested_by"] as string);
+      }
+      if (typeof resolvedData["assignment_group"] === "string") {
+        resolvedData["assignment_group"] = await resolveOptionalGroup(rc, resolvedData["assignment_group"] as string);
+      }
+
+      const record = await client.updateRecord("change_request", resolved.sys_id, resolvedData);
       return { content: [{ type: "text" as const, text: JSON.stringify({ updated: true, number: record["number"], record }, null, 2) }] };
     }
   );
@@ -115,24 +149,35 @@ export function registerChangeTools(server: McpServer, registry: InstanceRegistr
   server.registerTool(
     "sn_add_change_task",
     {
-      description: "Add a task to a change request.",
+      description: "Add a task to a change request. Accepts CHG number or sys_id for the parent. User/group fields accept human-readable names (auto-resolved).",
       inputSchema: {
         instance: z.string().optional().describe("Target ServiceNow instance name (from config). Uses default instance if omitted."),
-        change_request_sys_id: z.string().describe("Parent change request sys_id"),
+        change_request_sys_id: z.string().describe("Parent change request sys_id or number (e.g. 'CHG0010001' — auto-resolved)"),
         short_description: z.string().describe("Task description"),
-        assignment_group: z.string().optional(),
-        assigned_to: z.string().optional(),
+        assignment_group: z.string().optional().describe("Assignment group sys_id or group name (auto-resolved)"),
+        assigned_to: z.string().optional().describe("Assigned user sys_id, user_name, email, or full name (auto-resolved)"),
         planned_start_date: z.string().optional(),
         planned_end_date: z.string().optional(),
       },
     },
     async ({ instance, change_request_sys_id, short_description, assignment_group, assigned_to, planned_start_date, planned_end_date }) => {
       const client = registry.resolve(instance);
-      const data: Record<string, unknown> = { change_request: change_request_sys_id, short_description };
-      if (assignment_group) data["assignment_group"] = assignment_group;
-      if (assigned_to) data["assigned_to"] = assigned_to;
+      const rc = client as unknown as ResolvableClient;
+
+      // Resolve change request identifier
+      const resolvedChange = await resolveRecordIdentifier(rc, change_request_sys_id, "change_request");
+
+      const data: Record<string, unknown> = { change_request: resolvedChange.sys_id, short_description };
       if (planned_start_date) data["planned_start_date"] = planned_start_date;
       if (planned_end_date) data["planned_end_date"] = planned_end_date;
+
+      // Resolve user/group identifiers
+      const [resolvedAssignee, resolvedGroup] = await Promise.all([
+        resolveOptionalUser(rc, assigned_to),
+        resolveOptionalGroup(rc, assignment_group),
+      ]);
+      if (resolvedAssignee) data["assigned_to"] = resolvedAssignee;
+      if (resolvedGroup) data["assignment_group"] = resolvedGroup;
 
       const record = await client.createRecord("change_task", data);
       return { content: [{ type: "text" as const, text: JSON.stringify({ created: true, number: record["number"], sys_id: record["sys_id"] }, null, 2) }] };
@@ -142,15 +187,17 @@ export function registerChangeTools(server: McpServer, registry: InstanceRegistr
   server.registerTool(
     "sn_submit_change_for_approval",
     {
-      description: "Submit a change request for approval by advancing its state.",
+      description: "Submit a change request for approval by advancing its state. Accepts CHG number or sys_id.",
       inputSchema: {
         instance: z.string().optional().describe("Target ServiceNow instance name (from config). Uses default instance if omitted."),
-        sys_id: z.string().describe("Change request sys_id"),
+        sys_id: z.string().describe("Change request sys_id or number (e.g. 'CHG0010001' — auto-resolved)"),
       },
     },
     async ({ instance, sys_id }) => {
       const client = registry.resolve(instance);
-      const record = await client.updateRecord("change_request", sys_id, { state: "-4" }); // -4 = Authorize
+      const rc = client as unknown as ResolvableClient;
+      const resolved = await resolveRecordIdentifier(rc, sys_id, "change_request");
+      const record = await client.updateRecord("change_request", resolved.sys_id, { state: "-4" }); // -4 = Authorize
       return { content: [{ type: "text" as const, text: JSON.stringify({ submitted: true, number: record["number"], state: record["state"] }, null, 2) }] };
     }
   );
@@ -158,17 +205,20 @@ export function registerChangeTools(server: McpServer, registry: InstanceRegistr
   server.registerTool(
     "sn_approve_change",
     {
-      description: "Approve a change request (update the approval record).",
+      description: "Approve a change request (update the approval record). Accepts CHG number or sys_id.",
       inputSchema: {
         instance: z.string().optional().describe("Target ServiceNow instance name (from config). Uses default instance if omitted."),
-        sys_id: z.string().describe("Change request sys_id"),
+        sys_id: z.string().describe("Change request sys_id or number (e.g. 'CHG0010001' — auto-resolved)"),
         comments: z.string().optional().describe("Approval comments"),
       },
     },
     async ({ instance, sys_id, comments }) => {
       const client = registry.resolve(instance);
+      const rc = client as unknown as ResolvableClient;
+      const resolved = await resolveRecordIdentifier(rc, sys_id, "change_request");
+
       const approvals = await client.queryTable("sysapproval_approver", {
-        sysparm_query: `sysapproval=${sys_id}^state=requested`,
+        sysparm_query: `sysapproval=${resolved.sys_id}^state=requested`,
         sysparm_limit: 1, sysparm_fields: "sys_id",
       });
       const approval = approvals.records[0];
@@ -178,24 +228,27 @@ export function registerChangeTools(server: McpServer, registry: InstanceRegistr
       const data: Record<string, unknown> = { state: "approved" };
       if (comments) data["comments"] = comments;
       await client.updateRecord("sysapproval_approver", approval["sys_id"], data);
-      return { content: [{ type: "text" as const, text: JSON.stringify({ approved: true, change_sys_id: sys_id }, null, 2) }] };
+      return { content: [{ type: "text" as const, text: JSON.stringify({ approved: true, change_sys_id: resolved.sys_id }, null, 2) }] };
     }
   );
 
   server.registerTool(
     "sn_reject_change",
     {
-      description: "Reject a change request.",
+      description: "Reject a change request. Accepts CHG number or sys_id.",
       inputSchema: {
         instance: z.string().optional().describe("Target ServiceNow instance name (from config). Uses default instance if omitted."),
-        sys_id: z.string().describe("Change request sys_id"),
+        sys_id: z.string().describe("Change request sys_id or number (e.g. 'CHG0010001' — auto-resolved)"),
         comments: z.string().optional().describe("Rejection reason"),
       },
     },
     async ({ instance, sys_id, comments }) => {
       const client = registry.resolve(instance);
+      const rc = client as unknown as ResolvableClient;
+      const resolved = await resolveRecordIdentifier(rc, sys_id, "change_request");
+
       const approvals = await client.queryTable("sysapproval_approver", {
-        sysparm_query: `sysapproval=${sys_id}^state=requested`,
+        sysparm_query: `sysapproval=${resolved.sys_id}^state=requested`,
         sysparm_limit: 1, sysparm_fields: "sys_id",
       });
       const approval = approvals.records[0];
@@ -205,23 +258,25 @@ export function registerChangeTools(server: McpServer, registry: InstanceRegistr
       const data: Record<string, unknown> = { state: "rejected" };
       if (comments) data["comments"] = comments;
       await client.updateRecord("sysapproval_approver", approval["sys_id"], data);
-      return { content: [{ type: "text" as const, text: JSON.stringify({ rejected: true, change_sys_id: sys_id }, null, 2) }] };
+      return { content: [{ type: "text" as const, text: JSON.stringify({ rejected: true, change_sys_id: resolved.sys_id }, null, 2) }] };
     }
   );
 
   server.registerTool(
     "sn_add_change_comment",
     {
-      description: "Add a customer-visible comment to a change request.",
+      description: "Add a customer-visible comment to a change request. Accepts CHG number or sys_id.",
       inputSchema: {
         instance: z.string().optional().describe("Target ServiceNow instance name (from config). Uses default instance if omitted."),
-        sys_id: z.string(),
+        sys_id: z.string().describe("Change request sys_id or number (e.g. 'CHG0010001' — auto-resolved)"),
         comment: z.string(),
       },
     },
     async ({ instance, sys_id, comment }) => {
       const client = registry.resolve(instance);
-      const record = await client.updateRecord("change_request", sys_id, { comments: comment });
+      const rc = client as unknown as ResolvableClient;
+      const resolved = await resolveRecordIdentifier(rc, sys_id, "change_request");
+      const record = await client.updateRecord("change_request", resolved.sys_id, { comments: comment });
       return { content: [{ type: "text" as const, text: JSON.stringify({ success: true, number: record["number"] }, null, 2) }] };
     }
   );
@@ -229,16 +284,18 @@ export function registerChangeTools(server: McpServer, registry: InstanceRegistr
   server.registerTool(
     "sn_add_change_work_notes",
     {
-      description: "Add internal work notes to a change request.",
+      description: "Add internal work notes to a change request. Accepts CHG number or sys_id.",
       inputSchema: {
         instance: z.string().optional().describe("Target ServiceNow instance name (from config). Uses default instance if omitted."),
-        sys_id: z.string(),
+        sys_id: z.string().describe("Change request sys_id or number (e.g. 'CHG0010001' — auto-resolved)"),
         work_notes: z.string(),
       },
     },
     async ({ instance, sys_id, work_notes }) => {
       const client = registry.resolve(instance);
-      const record = await client.updateRecord("change_request", sys_id, { work_notes });
+      const rc = client as unknown as ResolvableClient;
+      const resolved = await resolveRecordIdentifier(rc, sys_id, "change_request");
+      const record = await client.updateRecord("change_request", resolved.sys_id, { work_notes });
       return { content: [{ type: "text" as const, text: JSON.stringify({ success: true, number: record["number"] }, null, 2) }] };
     }
   );

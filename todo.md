@@ -664,20 +664,26 @@ Zero other deps. Bun provides native fetch, native test runner, native TypeScrip
 > numbers ("INC0010045") to sys_ids. Our tools require raw sys_ids, which forces callers to do
 > manual lookups. This phase adds a resolution utility layer and wires it into existing tools.
 
-- [ ] `src/utils/resolve.ts` — Resolution utility module
-  - [ ] `resolveUserIdentifier(client, value)` — If value looks like a sys_id (32-char hex), pass through. Otherwise query `sys_user` by `name LIKE` or `user_name=` and return sys_id. Cache results in a per-request Map.
-  - [ ] `resolveRecordNumber(client, value, table?)` — If value looks like a sys_id, pass through. If it matches `INC\d+`, `CHG\d+`, `PRB\d+`, `RITM\d+`, `KB\d+` etc., query the appropriate table by `number=` and return sys_id. If `table` hint is given, query that table's `number` field.
-  - [ ] `resolveGroupIdentifier(client, value)` — Resolve group name to sys_id (query `sys_user_group` by `name=`).
-- [ ] Wire resolution into existing incident tools:
-  - [ ] `sn_update_incident` — resolve `assigned_to`, `caller_id` params via `resolveUserIdentifier`
-  - [ ] `sn_add_incident_comment` / `sn_add_incident_work_notes` — accept incident number or sys_id
-  - [ ] `sn_assign_incident` — resolve user name or sys_id for assignee, group name or sys_id for group
-- [ ] Wire resolution into existing change tools:
-  - [ ] `sn_update_change` — resolve `assigned_to`, `requested_by` params
-  - [ ] `sn_add_change_comment` / `sn_add_change_work_notes` — accept change number or sys_id
-- [ ] Wire resolution into existing user tools:
-  - [ ] `sn_add_group_member` — accept user name or sys_id, group name or sys_id
-- [ ] Add tests for the resolution utility in `tests/utils/resolve.test.ts`
+- [x] `src/utils/resolve.ts` — Resolution utility module
+  - [x] `resolveUserIdentifier(client, value)` — sys_id pass-through, user_name exact, email exact, name LIKE fuzzy. Ambiguous multi-match throws with list.
+  - [x] `resolveRecordIdentifier(client, value, table?)` — sys_id pass-through, INC/CHG/PRB/RITM/REQ/KB/STRY/CTASK/PTASK/STASK prefix mapping, tableHint fallback.
+  - [x] `resolveGroupIdentifier(client, value)` — sys_id pass-through, exact name, LIKE fuzzy. Ambiguous multi-match throws with list.
+  - [x] `resolveOptionalUser`, `resolveOptionalGroup`, `resolveOptionalRecord` — convenience wrappers (undefined pass-through)
+- [x] Wire resolution into existing incident tools:
+  - [x] `sn_create_incident` — resolve `assigned_to`, `caller_id`, `assignment_group`
+  - [x] `sn_update_incident` — resolve record identifier + `assigned_to`, `caller_id`, `assignment_group` in data
+  - [x] `sn_add_incident_comment` / `sn_add_incident_work_notes` — accept INC number or sys_id
+  - [x] `sn_resolve_incident` / `sn_close_incident` — accept INC number or sys_id
+- [x] Wire resolution into existing change tools:
+  - [x] `sn_create_change_request` — resolve `assigned_to`, `assignment_group`
+  - [x] `sn_update_change_request` — resolve CHG number + `assigned_to`, `requested_by`, `assignment_group` in data
+  - [x] `sn_add_change_task` — resolve CHG number + `assigned_to`, `assignment_group`
+  - [x] `sn_submit_change_for_approval` / `sn_approve_change` / `sn_reject_change` — accept CHG number or sys_id
+  - [x] `sn_add_change_comment` / `sn_add_change_work_notes` — accept CHG number or sys_id
+- [x] Wire resolution into existing user tools:
+  - [x] `sn_add_group_members` — accept user names/emails or sys_ids, group name or sys_id
+  - [x] `sn_remove_group_members` — accept user names/emails or sys_ids, group name or sys_id
+- [x] Add tests for the resolution utility in `tests/utils/resolve.test.ts` (33 tests)
 
 ## Phase P — Update Set Move & Clone (2 tools)
 
@@ -775,7 +781,7 @@ Zero other deps. Bun provides native fetch, native test runner, native TypeScrip
 | L: Requests/RITM | +6 | 164 | Pending |
 | M: Catalog Validation | +1 | 165 | Pending |
 | N: Extras | +6 | 171 | Pending |
-| O: Smart Resolution | +0 (enhancements) | 171 | Pending ⚡ |
+| O: Smart Resolution | +0 (enhancements) | 171 | **Done** ⚡ |
 | P: Update Set Move/Clone | +2 | 173 | Pending |
 | Q: Update Set Inspection | +0 (enhancement) | 173 | Pending |
 | R: Static Table Metadata | +0 (infra) | 173 | Pending |
