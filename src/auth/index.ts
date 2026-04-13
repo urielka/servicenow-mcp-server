@@ -1,6 +1,7 @@
 import type { AuthConfig } from "../config.ts";
 import { BasicAuthProvider } from "./basic.ts";
 import { OAuthProvider } from "./oauth.ts";
+import { TokenAuthProvider } from "./token.ts";
 import type { AuthProvider } from "./types.ts";
 
 export type { AuthProvider } from "./types.ts";
@@ -24,6 +25,9 @@ export function createAuthProvider(instanceUrl: string, auth: AuthConfig): AuthP
         username: auth.username,
         password: auth.password,
       });
+
+    case "token":
+      return new TokenAuthProvider(auth.token);
 
     default:
       throw new Error(`Unsupported auth type: ${(auth as { type: string }).type}`);

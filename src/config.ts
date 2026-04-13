@@ -19,9 +19,15 @@ const AuthOAuthSchema = z.object({
   password: z.string().optional(),
 });
 
+const AuthTokenSchema = z.object({
+  type: z.literal("token"),
+  token: z.string().min(1, "token is required"),
+});
+
 const AuthSchema = z.discriminatedUnion("type", [
   AuthBasicSchema,
   AuthOAuthSchema,
+  AuthTokenSchema,
 ]);
 
 // ── Per-instance schema ──────────────────────────────────────────────
@@ -75,6 +81,7 @@ export type Config = z.infer<typeof ConfigSchema>;
 export type InstanceConfig = z.infer<typeof InstanceSchema>;
 export type AuthBasicConfig = z.infer<typeof AuthBasicSchema>;
 export type AuthOAuthConfig = z.infer<typeof AuthOAuthSchema>;
+export type AuthTokenConfig = z.infer<typeof AuthTokenSchema>;
 export type AuthConfig = z.infer<typeof AuthSchema>;
 
 /**
